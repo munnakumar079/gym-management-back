@@ -7,65 +7,86 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\GymDetail;
 use Illuminate\Support\Facades\Hash;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
 {
-    // 🔹 REGISTER
+    // ================= REGISTER =================
     public function register(Request $request)
     {
         $request->validate([
-            'name'      => 'required|string',
-            'email'     => 'required|email|unique:users',
+            'name'      => 'required|string|max:255',
+            'email'     => 'required|email|unique:users,email',
             'password'  => 'required|min:6',
-
-            'gym_name'  => 'required|string',
-            'city'      => 'required|string',
-            'address'   => 'required|string',
+            'mobile'    => 'required|digits:10|unique:users,mobile',
+            'gym_name'  => 'required|string|max:255',
+            'city'      => 'required|string|max:255',
+            'address'   => 'required|string|max:255',
         ]);
 
-        // 1️⃣ User create
-        $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
+        try {
 
-        // 2️⃣ Gym details create
-        GymDetail::create([
-            'user_id'  => $user->id,
-            'gym_name' => $request->gym_name,
-            'city'     => $request->city,
-            'address'  => $request->address,
-        ]);
+            // Create User
+            $user = User::create([
+                'name'     => $request->name,
+                'email'    => $request->email,
+                'password' => Hash::make($request->password),
+                'mobile'   => $request->mobile,
+            ]);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'User registered successfully',
-            'data' => $user->load('gymDetail')
-        ], 201);
-    }
+            // Create Gym Details
+            GymDetail::create([
+                'user_id'  => $user->id,
+                'gym_name' => $request->gym_name,
+                'city'     => $request->city,
+                'address'  => $request->address,
+            ]);
 
-    // 🔹 LOGIN (basic)
-    public function login(Request $request)
-    {
-        $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required',
-        ]);
+            return successResponse(
+                'User registered successfully',
+                $user->load('gymDetail'),
+                201
+            );
 
-        $user = User::where('email', $request->email)->first();
+        } catch (\Exception $e) {
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Invalid credentials'
-            ], 401);
+            return errorResponse('Something went wrong', 500);
         }
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Login successful',
-            'data' => $user->load('gymDetail')
-        ]);
     }
+
+    // ================= LOGIN =================
+public function login(Request $request)
+{
+    $credentials = $request->only('email', 'password');
+
+    if (!$token = JWTAuth::attempt($credentials)) {
+        return errorResponse('Invalid credentials', 401);
+    }
+
+    return successResponse(
+        'Login successful',
+        [
+            'user'  => auth()->user()->load('gymDetail'),
+            'token' => $token,
+            'type'  => 'bearer'
+        ]
+    );
+}
+
+public function profile()
+{
+    return successResponse(
+        'Profile fetched successfully',
+        auth()->user()->load('gymDetail')
+    );
+}
+
+public function logout()
+{
+    auth()->logout();
+
+    return successResponse(
+        'Logout successful'
+    );
+}
 }
